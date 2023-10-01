@@ -1,0 +1,25 @@
+name: Codestyle and flake8 check
+
+on: push
+
+jobs:
+  flake_tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v3
+        with:
+          python-version: 3.11
+
+      - name: Install dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          pip3 install flake8 pep8-naming flake8-broken-line flake8-return flake8-isort
+          pip3 install -r bot_project/requirements.txt
+
+      - name: Test with flake8 and django tests
+        run: |
+          python3 -m flake8
+          # pytest

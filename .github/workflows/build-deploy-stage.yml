@@ -1,0 +1,92 @@
+name: Create and push vk_bot docker
+
+on:
+  push:
+    branches:
+      - master
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-and-push-image:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@65b78e6e13532edd9afa3aa52ac7964289d1a9c1
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@9ec57ed1fcdbf14dcef7dfbe97b2010124a938b7
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@f2a1d5e99d037542a71f64918e516c093c6f3fc4
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build-and-push-image
+    steps:
+      - name: executing remote ssh commands using ssh key
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USER }}
+          password: ${{ secrets.VM_PASSWORD }}
+          passphrase: ${{ secrets.PASSPHRASE }}
+          script: |
+            cd ./coding_centre_3/infra/dev/
+            rm .env
+            touch .env
+            git pull origin develop
+            
+            echo VK_API_TOKEN=${{ secrets.VK_API_TOKEN }} >> .env
+            echo VK_API_GROUP_ID=${{ secrets.VK_API_GROUP_ID }} >> .env
+            echo VK_API_QUIZ_RESPONSE_INTERVAL=${{ secrets.VK_API_QUIZ_RESPONSE_INTERVAL}} >> .env
+            echo VK_API_TASKS_INTERVAL=${{ secrets.VK_API_TASKS_INTERVAL}} >> .env
+  
+            echo EMAIL_HOST=${{ secrets.EMAIL_HOST }} >> .env
+            echo EMAIL_PORT=${{ secrets.EMAIL_PORT }} >> .env
+            echo EMAIL_ACCOUNT=${{ secrets.EMAIL_ACCOUNT }} >> .env
+            echo EMAIL_PASSWORD=${{ secrets.EMAIL_PASSWORD }} >> .env
+  
+            echo REDIS_HOST=${{ secrets.REDIS_HOST }} >> .env
+            echo REDIS_PORT=${{ secrets.REDIS_PORT }} >> .env
+            echo REDIS=${{ secrets.REDIS }} >> .env
+  
+            echo SECRET_KEY=${{ secrets.SECRET_KEY }} >> .env
+            echo DEBUG=False >> .env
+            echo ALLOWED_HOSTS=${{ secrets.ALLOWED_HOSTS }} >> .env
+  
+            echo DB_ENGINE=${{ secrets.DB_ENGINE }} >> .env
+            echo DB_NAME=${{ secrets.DB_NAME }} >> .env
+            echo POSTGRES_USER=${{ secrets.POSTGRES_USER }} >> .env
+            echo POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }} >> .env
+            echo DB_HOST=${{ secrets.DB_HOST }} >> .env
+            echo DB_PORT=${{ secrets.DB_PORT }} >> .env
+  
+            echo CELERY_BROKER_URL=${{ secrets.CELERY_BROKER_URL }} >> .env
+            echo CELERY_RESULT_BACKEND=${{ secrets.CELERY_RESULT_BACKEND }} >> .env
+  
+            docker-compose -f docker-compose.stage.yaml stop
+            docker-compose -f docker-compose.stage.yaml pull
+            docker-compose -f docker-compose.stage.yaml up -d

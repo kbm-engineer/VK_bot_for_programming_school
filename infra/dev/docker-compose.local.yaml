@@ -1,0 +1,75 @@
+version: '3.3'
+
+services:
+  nginx:
+    image: nginx:1.19.3
+    restart: always
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf
+      - static_value:/var/html/static/
+      - media_value:/var/html/media/
+
+  db:
+    image: postgres:13.0-alpine
+    restart: always
+    environment:
+      - "POSTGRES_HOST_AUTH_METHOD=trust"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+    env_file:
+      - ./.env
+
+  redis:
+      restart: unless-stopped
+      image: redis:latest
+      ports:
+          - "6379:6379"
+      command: bash -c " mkdir /data/log -p && mkdir /data/bases -p && touch /data/log/redis-server.log && redis-server /usr/local/etc/redis.conf "
+      volumes:
+        - ./redis.conf:/usr/local/etc/redis.conf
+        - data_value:/data
+
+  worker:
+    restart: unless-stopped
+    build:
+      context: ../../
+      dockerfile: ./Dockerfile
+    volumes:
+      - static_value:/app/static/
+      - media_value:/app/media/
+    env_file:
+      - ./.env
+    depends_on:
+      - redis
+    command:
+      - /bin/sh
+      - -c
+      - |
+        celery -A bot_project worker --beat --scheduler django --loglevel=info
+
+  backend:
+    build:
+      context: ../../
+      dockerfile: ./Dockerfile
+    restart: always
+    volumes:
+      - static_value:/app/static/
+      - media_value:/app/media/
+    depends_on:
+      - db
+      - worker
+    env_file:
+      - ./.env
+    command:
+      - /bin/sh
+      - -c
+      - |
+        python manage.py collectstatic --noinput
+        gunicorn bot_project.wsgi:application --bind 0.0.0.0:8000
+volumes:
+  static_value:
+  media_value:
+  postgres_data:
+  data_value:
